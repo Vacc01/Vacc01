@@ -1,1 +1,1 @@
-![GitHub Stats](https://github-profile-summary-cards.vercel.app/api/cards/stats?username=Vacc01&theme=github_dark)
+![GitHub activity](./profile-summary-card-output/github_dark/0-profile-details.svg)
