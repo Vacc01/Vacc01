@@ -169,18 +169,17 @@ jobs:
           )
 
           pull_requests = pr_data.get("total_count", 0)
+          
 
-          readme = f"""# Build activity
+          readme = f"""### ⚡ Build activity
 
-          | Metric | Since {since} |
-          |---|---:|
-          | Commits | **{commits:,}** |
-          | Merge commits | **{merges:,}** |
-          | Pull requests | **{pull_requests:,}** |
-          | Active build days | **{len(active_days)}** |
-          | Files touched | **{files_touched:,}** |
+          **{commits:,}** commits · **{merges:,}** merges · **{pull_requests:,}** PRs
 
-          <sub>Automatically aggregated from private repositories. Repository names, branches, commit messages and source code are not exposed.</sub>
+          **{len(active_days)}** active build days · **{files_touched:,}** files touched
+
+          *Building since Jul 22, 2026*
+
+          <sub>Automatically aggregated from private repositories.</sub>
           """
 
           # Remove indentation caused by Python block formatting
