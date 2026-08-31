@@ -1,11 +1,9 @@
-# Build activity
+### ⚡ Build activity
 
-| Metric | Since 2026-07-22 |
-|---|---:|
-| Commits | **1,215** |
-| Merge commits | **101** |
-| Pull requests | **164** |
-| Active build days | **40** |
-| Files touched | **3,245** |
+**1,215** commits · **101** merges · **164** PRs
 
-<sub>Automatically aggregated from private repositories. Repository names, branches, commit messages and source code are not exposed.</sub>
+**40** active build days · **3,245** files touched
+
+*Building since Jul 22, 2026*
+
+<sub>Automatically aggregated from private repositories.</sub>
