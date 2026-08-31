@@ -1,25 +1,215 @@
-name: GitHub-Profile-Summary-Cards
+name: Private Build Stats
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
   workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * *"
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  stats:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout profile repository
+        uses: actions/checkout@v4
 
-      - uses: vn7n24fzkq/github-profile-summary-cards@release
+      - name: Calculate private build activity
         env:
-          GITHUB_TOKEN: ${{ secrets.SUMMARY_GITHUB_TOKEN }}
-        with:
-          USERNAME: ${{ github.repository_owner }}
-          BRANCH_NAME: "main"
-          UTC_OFFSET: 2
-          AUTO_PUSH: true
+          PRIVATE_TOKEN: ${{ secrets.SUMMARY_GITHUB_TOKEN }}
+          GITHUB_USER: Vacc01
+          BUILD_SINCE: "2026-07-22"
+        run: |
+          python <<'PY'
+          import os
+          import json
+          import pathlib
+          import subprocess
+          import tempfile
+          import urllib.request
+          import urllib.parse
+
+          token = os.environ["PRIVATE_TOKEN"]
+          username = os.environ["GITHUB_USER"]
+          since = os.environ["BUILD_SINCE"]
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "private-build-stats"
+          }
+
+          def api(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          # Find all private repositories owned by the account
+          repos = []
+          page = 1
+
+          while True:
+              data = api(
+                  f"https://api.github.com/user/repos"
+                  f"?visibility=private&affiliation=owner&per_page=100&page={page}"
+              )
+
+              if not data:
+                  break
+
+              repos.extend(data)
+
+              if len(data) < 100:
+                  break
+
+              page += 1
+
+          commits = 0
+          merges = 0
+          active_days = set()
+          files_touched = 0
+
+          def git(repo_path, *args):
+              result = subprocess.run(
+                  ["git", *args],
+                  cwd=repo_path,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.DEVNULL,
+                  text=True,
+                  check=True
+              )
+              return result.stdout.strip()
+
+          with tempfile.TemporaryDirectory() as temp:
+              for index, repo in enumerate(repos):
+
+                  destination = pathlib.Path(temp) / f"repo-{index}"
+
+                  clone_url = (
+                      f"https://x-access-token:{token}"
+                      f"@github.com/{repo['full_name']}.git"
+                  )
+
+                  subprocess.run(
+                      [
+                          "git",
+                          "clone",
+                          "--mirror",
+                          "--quiet",
+                          clone_url,
+                          str(destination)
+                      ],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                      check=True
+                  )
+
+                  commit_count = git(
+                      destination,
+                      "rev-list",
+                      "--all",
+                      "--count",
+                      f"--since={since}"
+                  )
+
+                  merge_count = git(
+                      destination,
+                      "rev-list",
+                      "--all",
+                      "--merges",
+                      "--count",
+                      f"--since={since}"
+                  )
+
+                  dates = git(
+                      destination,
+                      "log",
+                      "--all",
+                      f"--since={since}",
+                      "--date=short",
+                      "--pretty=format:%ad"
+                  )
+
+                  files = git(
+                      destination,
+                      "log",
+                      "--all",
+                      f"--since={since}",
+                      "--name-only",
+                      "--pretty=format:"
+                  )
+
+                  commits += int(commit_count or 0)
+                  merges += int(merge_count or 0)
+
+                  active_days.update(
+                      line.strip()
+                      for line in dates.splitlines()
+                      if line.strip()
+                  )
+
+                  unique_files = {
+                      line.strip()
+                      for line in files.splitlines()
+                      if line.strip()
+                  }
+
+                  files_touched += len(unique_files)
+
+          # PR count
+          query = urllib.parse.quote(
+              f"author:{username} is:pr created:>={since}"
+          )
+
+          pr_data = api(
+              f"https://api.github.com/search/issues?q={query}&per_page=1"
+          )
+
+          pull_requests = pr_data.get("total_count", 0)
+
+          readme = f"""# Build activity
+
+          | Metric | Since {since} |
+          |---|---:|
+          | Commits | **{commits:,}** |
+          | Merge commits | **{merges:,}** |
+          | Pull requests | **{pull_requests:,}** |
+          | Active build days | **{len(active_days)}** |
+          | Files touched | **{files_touched:,}** |
+
+          <sub>Automatically aggregated from private repositories. Repository names, branches, commit messages and source code are not exposed.</sub>
+          """
+
+          # Remove indentation caused by Python block formatting
+          import textwrap
+          readme = textwrap.dedent(readme)
+
+          pathlib.Path("README.md").write_text(
+              readme,
+              encoding="utf-8"
+          )
+
+          print("Build statistics calculated successfully.")
+          print(f"Commits: {commits}")
+          print(f"Merges: {merges}")
+          print(f"Active days: {len(active_days)}")
+          print(f"Files touched: {files_touched}")
+          print(f"Pull requests: {pull_requests}")
+          PY
+
+      - name: Update profile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add README.md
+
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "chore: update build activity"
+            git push
+          fi
